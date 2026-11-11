@@ -1,0 +1,40 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --appendonly, 'yes', --maxmemory, 2gb, --maxmemory-policy, noeviction]
+    volumes: [redis-data:/data]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    build: .
+    image: embedder-serv:local
+    env_file: .env
+    ports: ['8000:8000']
+    volumes: [outputs:/data]
+    depends_on:
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  worker:
+    image: embedder-serv:local
+    build: .
+    command: [python, -m, app.worker]
+    env_file: .env
+    environment:
+      HF_HOME: /cache/huggingface
+      U2NET_HOME: /cache/rembg
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+    gpus: all
+    shm_size: 8gb
+    volumes: [model-cache:/cache, outputs:/data]
+    depends_on:
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  redis-data:
+  model-cache:
+  outputs:
